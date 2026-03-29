@@ -32,3 +32,5 @@ output_data/
 
 # --- Docker ---
 .dockerignore
+
+flag.txt

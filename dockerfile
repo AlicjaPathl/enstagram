@@ -1,9 +1,16 @@
 FROM python:3.11-slim
-RUN apt-get update && apt-get install -y tcpdump curl iproute2 net-tools
+
+# Instalacja narzędzi sieciowych wewnątrz kontenera (dla administratora)
+RUN apt-get update && apt-get install -y tcpdump curl iproute2 net-tools && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
-# Instalujemy Flask
-RUN pip install flask werkzeug
+
+# Kopiowanie plików
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
-# Informujemy Dockera, że używamy portu 80
+
+# Flask domyślnie na porcie 80
 EXPOSE 80
+
 CMD ["python", "main.py"]
