@@ -2,29 +2,31 @@ import os
 import time
 import random
 import threading
+import json
 import requests
 from flask import Flask, render_template, request, redirect, url_for
 
 app = Flask(__name__)
+
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Pobieranie flagi z pliku .env (środowiska)
 FLAG = os.getenv('APP_FLAG', 'CTF{placeholder_flag}')
 MIN_W = int(os.getenv('MIN_WAIT', 30))
 MAX_W = int(os.getenv('MAX_WAIT', 300))
 
+# Wczytaj zadania z JSON
+with open('tasks.json', 'r', encoding='utf-8') as f:
+    TASKS = json.load(f)
 
+
+# --- Wątek 1: flaga (bez zmian) ---
 def background_noise():
-    """Wysyła flagę w losowych odstępach czasu do samego siebie."""
     while True:
         try:
-            # Losowanie czasu cierpliwości: 30s - 5min
             wait_time = random.randint(MIN_W, MAX_W)
             time.sleep(wait_time)
-
-            # Ruch wewnątrz sieci Dockera (widoczny w Wiresharku na docker0)
             requests.post(
                 'http://127.0.0.1/internal_audit',
                 headers={
@@ -37,15 +39,51 @@ def background_noise():
             pass
 
 
-# Start wątku tła
+# --- Wątek 2: szum z tasks.json ---
+def task_noise():
+    endpoints = [
+        lambda: requests.post(
+            'http://127.0.0.1/api/login',
+            data={
+                'username': random.choice(TASKS['users']),
+                'password': random.choice(TASKS['passwords'])
+            }
+        ),
+        lambda: requests.post(
+            'http://127.0.0.1/api/message',
+            data={
+                'from': random.choice(TASKS['users']),
+                'body': random.choice(TASKS['messages'])
+            }
+        ),
+        lambda: requests.post(
+            'http://127.0.0.1/api/token',
+            headers={
+                'Authorization': random.choice(TASKS['tokens']),
+                'User-Agent': 'AppClient/2.1'
+            },
+            data={'action': 'verify'}
+        ),
+    ]
+
+    while True:
+        try:
+            wait_time = random.randint(MIN_W // 2, MAX_W // 2)
+            time.sleep(wait_time)
+            random.choice(endpoints)()
+        except Exception:
+            pass
+
+
 threading.Thread(target=background_noise, daemon=True).start()
+threading.Thread(target=task_noise, daemon=True).start()
 
 
+# --- Endpointy aplikacji ---
 @app.route('/')
 def index():
     images = os.listdir(app.config['UPLOAD_FOLDER'])
     return render_template('index.html', images=images)
-
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -58,12 +96,23 @@ def upload_file():
     return redirect(url_for('index'))
 
 
+# --- Endpointy szumu ---
 @app.route('/internal_audit', methods=['POST'])
 def internal_audit():
-    # Ten endpoint tylko odbiera ruch "szumu"
     return "Audit Logged", 200
+
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    return "OK", 200
+
+@app.route('/api/message', methods=['POST'])
+def api_message():
+    return "OK", 200
+
+@app.route('/api/token', methods=['POST'])
+def api_token():
+    return "OK", 200
 
 
 if __name__ == '__main__':
-    # Uruchomienie na porcie 80
     app.run(host='0.0.0.0', port=80)
